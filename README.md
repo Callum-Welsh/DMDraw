@@ -52,15 +52,6 @@ The generated BMP files are:
 - **Bit depth**: 1 bit per pixel (black and white only)
 - **Format**: Standard BMP format compatible with DMD systems
 
-## Example Usage
-
-1. Start the application
-2. Use the rectangle tool to add a 100×100 square at position (0, 0)
-3. Add a circle with radius 50 at the center (456, 570)
-4. Draw a line from (0, 0) to (200, 200)
-5. Preview the pattern in the right panel
-6. Click "Save as BMP" to save your pattern
-
 ## Dependencies
 
 - `numpy`: Array manipulation and mathematical operations
