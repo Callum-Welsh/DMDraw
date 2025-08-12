@@ -1,4 +1,4 @@
-# DMD Pattern Generator
+# DMDraw: A Simple DMD Pattern Generator
 
 A Python application for generating Digital Micromirror Device (DMD) patterns and saving them as 1-bit BMP files.
 
