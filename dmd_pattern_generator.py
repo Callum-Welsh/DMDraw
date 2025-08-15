@@ -206,10 +206,10 @@ class DMDPatternGenerator:
     
     def add_rectangle(self):
         try:
-            x = int(self.x1_var.get())
-            y = int(self.y1_var.get())
-            w = int(self.w_var.get())
-            h = int(self.h_var.get())
+            x = int(int(self.x1_var.get()))
+            y = int(np.sqrt(4)*int(self.y1_var.get()))
+            w = int(int(self.w_var.get()))
+            h = int(np.sqrt(4)*int(self.h_var.get()))
             
             # Ensure coordinates are within bounds
             x = max(0, min(x, self.width - 1))
@@ -225,7 +225,7 @@ class DMDPatternGenerator:
     
     def add_circle(self):
         try:
-            cx = int(self.cx_var.get())
+            cx = int(np.sqrt(4)*int(self.cx_var.get()))
             cy = int(self.cy_var.get())
             radius = int(self.radius_var.get())
             
@@ -233,7 +233,7 @@ class DMDPatternGenerator:
             y, x = np.ogrid[:self.height, :self.width]
             
             # Calculate distance from center
-            dist = np.sqrt((x - cx)**2 + (y - cy)**2)
+            dist = np.sqrt((np.sqrt(4)*x - cx)**2 + ((y - cy))**2)
             
             # Set pixels within radius to 1
             self.pattern[dist <= radius] = 1
@@ -347,7 +347,7 @@ class DMDPatternGenerator:
         preview_scale = self.preview_scale_var.get()
         
         # Calculate preview dimensions based on scale
-        preview_width = int(self.width * preview_scale)
+        preview_width = int(np.sqrt(4)*int(self.width * preview_scale))
         preview_height = int(self.height * preview_scale)
         
         # Convert numpy array to PIL Image
