@@ -117,6 +117,60 @@ class DMDPatternGenerator:
         
         tk.Button(line_frame, text="Add Line", command=self.add_line).pack(pady=5)
         
+        # Grid tool
+        grid_frame = tk.Frame(tools_frame)
+        grid_frame.pack(fill=tk.X, pady=5)
+        
+        tk.Label(grid_frame, text="Grid:").pack(anchor=tk.W)
+        
+        grid_inputs = tk.Frame(grid_frame)
+        grid_inputs.pack(fill=tk.X)
+        
+        tk.Label(grid_inputs, text="Start X:").grid(row=0, column=0, sticky=tk.W)
+        self.grid_x_var = tk.StringVar(value="0")
+        tk.Entry(grid_inputs, textvariable=self.grid_x_var, width=8).grid(row=0, column=1, padx=(5, 10))
+        
+        tk.Label(grid_inputs, text="Start Y:").grid(row=0, column=2, sticky=tk.W)
+        self.grid_y_var = tk.StringVar(value="0")
+        tk.Entry(grid_inputs, textvariable=self.grid_y_var, width=8).grid(row=0, column=3, padx=(5, 10))
+        
+        tk.Label(grid_inputs, text="Square Size:").grid(row=1, column=0, sticky=tk.W)
+        self.grid_size_var = tk.StringVar(value="10")
+        tk.Entry(grid_inputs, textvariable=self.grid_size_var, width=8).grid(row=1, column=1, padx=(5, 10))
+        
+        tk.Label(grid_inputs, text="Spacing:").grid(row=1, column=2, sticky=tk.W)
+        self.grid_spacing_var = tk.StringVar(value="20")
+        tk.Entry(grid_inputs, textvariable=self.grid_spacing_var, width=8).grid(row=1, column=3, padx=(5, 10))
+        
+        tk.Button(grid_frame, text="Add Grid", command=self.add_grid).pack(pady=5)
+        
+        # Text tool
+        text_frame = tk.Frame(tools_frame)
+        text_frame.pack(fill=tk.X, pady=5)
+        
+        tk.Label(text_frame, text="Text:").pack(anchor=tk.W)
+        
+        text_inputs = tk.Frame(text_frame)
+        text_inputs.pack(fill=tk.X)
+        
+        tk.Label(text_inputs, text="Text:").grid(row=0, column=0, sticky=tk.W)
+        self.text_var = tk.StringVar(value="Hello")
+        tk.Entry(text_inputs, textvariable=self.text_var, width=15).grid(row=0, column=1, columnspan=3, padx=(5, 10), sticky=tk.EW)
+        
+        tk.Label(text_inputs, text="X:").grid(row=1, column=0, sticky=tk.W)
+        self.text_x_var = tk.StringVar(value="100")
+        tk.Entry(text_inputs, textvariable=self.text_x_var, width=8).grid(row=1, column=1, padx=(5, 10))
+        
+        tk.Label(text_inputs, text="Y:").grid(row=1, column=2, sticky=tk.W)
+        self.text_y_var = tk.StringVar(value="100")
+        tk.Entry(text_inputs, textvariable=self.text_y_var, width=8).grid(row=1, column=3, padx=(5, 10))
+        
+        tk.Label(text_inputs, text="Size:").grid(row=2, column=0, sticky=tk.W)
+        self.text_size_var = tk.StringVar(value="20")
+        tk.Entry(text_inputs, textvariable=self.text_size_var, width=8).grid(row=2, column=1, padx=(5, 10))
+        
+        tk.Button(text_frame, text="Add Text", command=self.add_text).pack(pady=5)
+        
         # Utility buttons
         utility_frame = tk.LabelFrame(control_frame, text="Utilities", padx=10, pady=10)
         utility_frame.pack(fill=tk.X, pady=(0, 10))
@@ -253,6 +307,130 @@ class DMDPatternGenerator:
             self.status_var.set(f"Added line from ({x1}, {y1}) to ({x2}, {y2})")
         except ValueError:
             messagebox.showerror("Error", "Please enter valid numbers for line coordinates")
+    
+    def add_grid(self):
+        """Add a square grid pattern with specified square size and spacing"""
+        try:
+            # Get grid parameters
+            start_x = int(self.grid_x_var.get())
+            start_y = int(self.grid_y_var.get())
+            square_size = int(self.grid_size_var.get())
+            spacing = int(self.grid_spacing_var.get())
+            
+            # Apply DLP 4500 diagonal grid scaling (same as rectangle/circle)
+            # X coordinates are scaled by sqrt(4) = 2
+            scaled_start_x = int(np.sqrt(4) * start_x)
+            
+            # Calculate grid parameters
+            total_spacing = square_size + spacing
+            
+            # Calculate how many squares can fit in the pattern
+            max_squares_x = (self.width - scaled_start_x) // total_spacing
+            max_squares_y = (self.height - start_y) // total_spacing
+            
+            # Create the grid
+            squares_added = 0
+            for i in range(max_squares_x):
+                for j in range(max_squares_y):
+                    # Calculate square position
+                    square_x = scaled_start_x + i * total_spacing
+                    square_y = start_y + j * total_spacing
+                    
+                    # Ensure square fits within bounds
+                    if (square_x + square_size <= self.width and 
+                        square_y + square_size <= self.height):
+                        # Add the square
+                        self.pattern[square_y:square_y + square_size, 
+                                   square_x:square_x + square_size] = 1
+                        squares_added += 1
+            
+            self.update_preview()
+            self.status_var.set(f"Added grid: {squares_added} squares starting at ({start_x}, {start_y})")
+            
+        except ValueError:
+            messagebox.showerror("Error", "Please enter valid numbers for grid parameters")
+    
+    def add_text(self):
+        """Add text to the pattern with DLP 4500 diagonal grid compensation"""
+        try:
+            # Get text parameters
+            text = self.text_var.get()
+            x = int(self.text_x_var.get())
+            y = int(self.text_y_var.get())
+            size = int(self.text_size_var.get())
+            
+            if not text.strip():
+                messagebox.showerror("Error", "Please enter some text")
+                return
+            
+            # Apply DLP 4500 diagonal grid scaling (same as other tools)
+            # X coordinates are scaled by sqrt(4) = 2
+            scaled_x = int(np.sqrt(4) * x)
+            
+            # Create a temporary image to render the text
+            # Use a larger temporary image to ensure text fits
+            temp_width = len(text) * size * 2  # Estimate width needed
+            temp_height = size * 2  # Estimate height needed
+            
+            # Create temporary image with white background
+            temp_img = Image.new('L', (temp_width, temp_height), 255)
+            
+            # Create a drawing object
+            from PIL import ImageDraw, ImageFont
+            
+            draw = ImageDraw.Draw(temp_img)
+            
+            # Try to use a default font, fallback to basic if not available
+            try:
+                # Try to use a system font
+                font = ImageFont.truetype("arial.ttf", size)
+            except:
+                try:
+                    # Try alternative font names
+                    font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", size)
+                except:
+                    # Fallback to default font
+                    font = ImageFont.load_default()
+            
+            # Draw the text in black
+            draw.text((0, 0), text, fill=0, font=font)
+            
+            # Convert to numpy array and threshold to binary
+            text_array = np.array(temp_img)
+            text_binary = (text_array < 128).astype(np.uint8)
+            
+            # Get the actual text bounds (crop to actual text content)
+            # Find the bounding box of the text
+            rows = np.any(text_binary, axis=1)
+            cols = np.any(text_binary, axis=0)
+            
+            if np.any(rows) and np.any(cols):
+                rmin, rmax = np.where(rows)[0][[0, -1]]
+                cmin, cmax = np.where(cols)[0][[0, -1]]
+                
+                # Crop to actual text content
+                text_content = text_binary[rmin:rmax+1, cmin:cmax+1]
+                text_height, text_width = text_content.shape
+                
+                # Check if text fits within pattern bounds
+                if (scaled_x + text_width <= self.width and 
+                    y + text_height <= self.height and
+                    scaled_x >= 0 and y >= 0):
+                    
+                    # Add the text to the pattern
+                    self.pattern[y:y + text_height, scaled_x:scaled_x + text_width] = text_content
+                    
+                    self.update_preview()
+                    self.status_var.set(f"Added text '{text}' at ({x}, {y}) with size {size}")
+                else:
+                    messagebox.showerror("Error", "Text would extend beyond pattern boundaries")
+            else:
+                messagebox.showerror("Error", "Could not render text")
+                
+        except ValueError:
+            messagebox.showerror("Error", "Please enter valid numbers for text parameters")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to add text: {str(e)}")
     
     def bresenham_line(self, x1, y1, x2, y2):
         """Bresenham's line algorithm for drawing lines"""
