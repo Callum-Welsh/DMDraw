@@ -11,6 +11,9 @@ A Python application for generating Digital Micromirror Device (DMD) patterns an
 - **Utility functions**: Clear, invert, and generate random patterns
 - **Live preview**: See your pattern before saving
 
+## Context: The TI DLP 4500 DMD
+This software is desined to work with the Texas Instruments DLP 4500 DMD. On this device, the pixels are right diamonds oriented in zig-zagging rows and columns as follows. Before using this software, please see the TI docs [here](https://www.ti.com/lit/ds/symlink/dlp4500.pdf?ts=1755526644323&ref_url=https%253A%252F%252Fwww.ti.com%252Fproduct%252FDLP4500)
+
 ## Installation
 
 1. Install Python 3.7 or higher
