@@ -28,16 +28,37 @@ class DMDPatternGenerator:
         main_frame = tk.Frame(self.root)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        # Control panel (left side)
+        # Control panel (left side) - make it scrollable
         control_frame = tk.Frame(main_frame, width=300)
         control_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
         
+        # Create a canvas with scrollbar for the control panel
+        control_canvas = tk.Canvas(control_frame, width=300)
+        control_scrollbar = tk.Scrollbar(control_frame, orient=tk.VERTICAL, command=control_canvas.yview)
+        scrollable_control_frame = tk.Frame(control_canvas)
+        
+        # Configure the canvas
+        control_canvas.configure(yscrollcommand=control_scrollbar.set)
+        
+        # Pack the scrollbar and canvas
+        control_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        control_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        # Create a window in the canvas for the scrollable frame
+        control_canvas.create_window((0, 0), window=scrollable_control_frame, anchor=tk.NW)
+        
+        # Configure the scrollable frame to expand
+        scrollable_control_frame.bind(
+            "<Configure>",
+            lambda e: control_canvas.configure(scrollregion=control_canvas.bbox("all"))
+        )
+        
         # Title
-        title_label = tk.Label(control_frame, text="DMD Pattern Generator", font=("Arial", 16, "bold"))
+        title_label = tk.Label(scrollable_control_frame, text="DMD Pattern Generator", font=("Arial", 16, "bold"))
         title_label.pack(pady=(0, 20))
         
         # Pattern tools
-        tools_frame = tk.LabelFrame(control_frame, text="Pattern Tools", padx=10, pady=10)
+        tools_frame = tk.LabelFrame(scrollable_control_frame, text="Pattern Tools", padx=10, pady=10)
         tools_frame.pack(fill=tk.X, pady=(0, 10))
         
         # Rectangle tool
@@ -172,15 +193,17 @@ class DMDPatternGenerator:
         tk.Button(text_frame, text="Add Text", command=self.add_text).pack(pady=5)
         
         # Utility buttons
-        utility_frame = tk.LabelFrame(control_frame, text="Utilities", padx=10, pady=10)
+        utility_frame = tk.LabelFrame(scrollable_control_frame, text="Utilities", padx=10, pady=10)
         utility_frame.pack(fill=tk.X, pady=(0, 10))
         
         tk.Button(utility_frame, text="Clear Pattern", command=self.clear_pattern).pack(fill=tk.X, pady=2)
         tk.Button(utility_frame, text="Invert Pattern", command=self.invert_pattern).pack(fill=tk.X, pady=2)
         tk.Button(utility_frame, text="Random Pattern", command=self.random_pattern).pack(fill=tk.X, pady=2)
+        tk.Button(utility_frame, text="Flip Horizontal (X-axis)", command=self.flip_horizontal).pack(fill=tk.X, pady=2)
+        tk.Button(utility_frame, text="Flip Vertical (Y-axis)", command=self.flip_vertical).pack(fill=tk.X, pady=2)
         
         # Preview controls
-        preview_controls_frame = tk.LabelFrame(control_frame, text="Preview Controls", padx=10, pady=10)
+        preview_controls_frame = tk.LabelFrame(scrollable_control_frame, text="Preview Controls", padx=10, pady=10)
         preview_controls_frame.pack(fill=tk.X, pady=(0, 10))
         
         # Preview scale slider
@@ -211,10 +234,18 @@ class DMDPatternGenerator:
         self.pixel_perfect_label = tk.Label(preview_controls_frame, text="", font=("Arial", 9, "bold"), fg="blue")
         self.pixel_perfect_label.pack(anchor=tk.CENTER, pady=2)
         
+        # Isotropic primitives toggle
+        self.iso_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(
+            preview_controls_frame,
+            text="Isotropic primitives (DMD lattice)",
+            variable=self.iso_var
+        ).pack(anchor=tk.W)
+
 
         
         # Save button
-        save_frame = tk.LabelFrame(control_frame, text="Save", padx=10, pady=10)
+        save_frame = tk.LabelFrame(scrollable_control_frame, text="Save", padx=10, pady=10)
         save_frame.pack(fill=tk.X)
         
         tk.Button(save_frame, text="Save as BMP", command=self.save_bmp, bg="green", fg="white").pack(fill=tk.X)
@@ -259,174 +290,365 @@ class DMDPatternGenerator:
         status_bar.pack(side=tk.BOTTOM, fill=tk.X)
     
     def add_rectangle(self):
+        if self.iso_var.get():
+            self.add_rectangle_iso()
+        else:
+            self.add_rectangle_legacy()
+
+    # Legacy rectangle (kept for rollback)
+    def add_rectangle_legacy(self):
         try:
-            x = int(int(self.x1_var.get()))
-            y = int(np.sqrt(4)*int(self.y1_var.get()))
-            w = int(int(self.w_var.get()))
-            h = int(np.sqrt(4)*int(self.h_var.get()))
-            
-            # Ensure coordinates are within bounds
+            x = int(np.sqrt(4)*int(self.x1_var.get()))
+            y = int(self.y1_var.get())
+            w = int(self.w_var.get())
+            h = int(self.h_var.get())
             x = max(0, min(x, self.width - 1))
             y = max(0, min(y, self.height - 1))
             w = max(1, min(w, self.width - x))
             h = max(1, min(h, self.height - y))
-            
             self.pattern[y:y+h, x:x+w] = 1
             self.update_preview()
-            self.status_var.set(f"Added rectangle at ({x}, {y}) with size {w}x{h}")
+            self.status_var.set(f"(Legacy) Added rectangle at ({x}, {y}) with size {w}x{h}")
+        except ValueError:
+            messagebox.showerror("Error", "Please enter valid numbers for rectangle coordinates")
+
+    # Isotropic rectangle on DMD lattice
+    def add_rectangle_iso(self):
+        try:
+            x = int(self.x1_var.get())
+            y = int(self.y1_var.get())
+            w = int(self.w_var.get())
+            h = int(self.h_var.get())
+            # Clamp BMP-space bounds
+            x = max(0, min(x, self.width - 1))
+            y = max(0, min(y, self.height - 1))
+            w = max(1, min(w, self.width - x))
+            h = max(1, min(h, self.height - y))
+            # Build masks based on physical mapping
+            # Condition A: (2c in [2x, 2(x+w))) and (r in [y, y+h))
+            # Condition B: (2c+1 in [2x, 2(x+w))) and (r+1 in [y, y+h))
+            rows = np.arange(self.height)[:, None]
+            cols = np.arange(self.width)[None, :]
+            cond_a = (cols >= x) & (cols < x + w) & (rows >= y) & (rows < y + h)
+            cond_b = (cols >= x) & (cols < x + w) & (rows + 1 >= y) & (rows + 1 < y + h)
+            mask = cond_a | cond_b
+            self.pattern[mask] = 1
+            self.update_preview()
+            self.status_var.set(f"(Iso) Added rectangle at ({x}, {y}) size {w}x{h}")
         except ValueError:
             messagebox.showerror("Error", "Please enter valid numbers for rectangle coordinates")
     
     def add_circle(self):
+        if self.iso_var.get():
+            self.add_circle_iso()
+        else:
+            self.add_circle_legacy()
+
+    # Legacy circle (kept for rollback)
+    def add_circle_legacy(self):
         try:
             cx = int(np.sqrt(4)*int(self.cx_var.get()))
             cy = int(self.cy_var.get())
             radius = int(self.radius_var.get())
-            
-            # Create coordinate grids
             y, x = np.ogrid[:self.height, :self.width]
-            
-            # Calculate distance from center
             dist = np.sqrt((np.sqrt(4)*x - cx)**2 + ((y - cy))**2)
-            
-            # Set pixels within radius to 1
             self.pattern[dist <= radius] = 1
             self.update_preview()
-            self.status_var.set(f"Added circle at ({cx}, {cy}) with radius {radius}")
+            self.status_var.set(f"(Legacy) Added circle at ({cx}, {cy}) with radius {radius}")
+        except ValueError:
+            messagebox.showerror("Error", "Please enter valid numbers for circle parameters")
+
+    # Isotropic circle on DMD lattice (operate in physical P-grid)
+    def add_circle_iso(self):
+        try:
+            cx_b = int(self.cx_var.get())
+            cy_b = int(self.cy_var.get())
+            radius_p = int(self.radius_var.get())
+            # Center in physical grid
+            cx_p = 2 * cx_b
+            cy_p = cy_b
+            # Build BMP-space grids
+            rows = np.arange(self.height)[:, None]
+            cols = np.arange(self.width)[None, :]
+            # Distances for the two physical mirrors per BMP pixel
+            dx0 = (2 * cols - cx_p)
+            dy0 = (rows - cy_p)
+            dx1 = (2 * cols + 1 - cx_p)
+            dy1 = (rows + 1 - cy_p)
+            inside = (dx0 * dx0 + dy0 * dy0 <= radius_p * radius_p) | \
+                     (dx1 * dx1 + dy1 * dy1 <= radius_p * radius_p)
+            self.pattern[inside] = 1
+            self.update_preview()
+            self.status_var.set(f"(Iso) Added circle at ({cx_b}, {cy_b}) with radius {radius_p} (P units)")
         except ValueError:
             messagebox.showerror("Error", "Please enter valid numbers for circle parameters")
     
     def add_line(self):
+        if self.iso_var.get():
+            self.add_line_iso()
+        else:
+            self.add_line_legacy()
+
+    # Legacy line (kept for rollback)
+    def add_line_legacy(self):
         try:
-            x1, y1 = int(self.lx1_var.get()), int(self.ly1_var.get())
-            x2, y2 = int(self.lx2_var.get()), int(self.ly2_var.get())
-            
-            # Use Bresenham's line algorithm
+            x1 = int(np.sqrt(4)*int(self.lx1_var.get()))
+            y1 = int(self.ly1_var.get())
+            x2 = int(np.sqrt(4)*int(self.lx2_var.get()))
+            y2 = int(self.ly2_var.get())
             self.bresenham_line(x1, y1, x2, y2)
             self.update_preview()
-            self.status_var.set(f"Added line from ({x1}, {y1}) to ({x2}, {y2})")
+            self.status_var.set(f"(Legacy) Added line from ({x1}, {y1}) to ({x2}, {y2})")
         except ValueError:
             messagebox.showerror("Error", "Please enter valid numbers for line coordinates")
+
+    # Isotropic line on DMD lattice (draw in physical grid and map back)
+    def add_line_iso(self):
+        try:
+            x1_b = int(self.lx1_var.get())
+            y1_b = int(self.ly1_var.get())
+            x2_b = int(self.lx2_var.get())
+            y2_b = int(self.ly2_var.get())
+            # Physical endpoints
+            x1_p, y1_p = 2 * x1_b, y1_b
+            x2_p, y2_p = 2 * x2_b, y2_b
+            for (xp, yp) in self._bresenham_line_physical(x1_p, y1_p, x2_p, y2_p):
+                c, r = self._p_to_bmp(xp, yp)
+                if c is not None and 0 <= c < self.width and 0 <= r < self.height:
+                    self.pattern[r, c] = 1
+            self.update_preview()
+            self.status_var.set(f"(Iso) Added line from ({x1_b}, {y1_b}) to ({x2_b}, {y2_b})")
+        except ValueError:
+            messagebox.showerror("Error", "Please enter valid numbers for line coordinates")
+
+    # Physical grid Bresenham
+    def _bresenham_line_physical(self, x1: int, y1: int, x2: int, y2: int):
+        dx = abs(x2 - x1)
+        dy = abs(y2 - y1)
+        x, y = x1, y1
+        sx = 1 if x2 > x1 else -1
+        sy = 1 if y2 > y1 else -1
+        if dx >= dy:
+            err = dx // 2
+            while True:
+                yield (x, y)
+                if x == x2 and y == y2:
+                    break
+                err -= dy
+                if err < 0:
+                    y += sy
+                    err += dx
+                x += sx
+        else:
+            err = dy // 2
+            while True:
+                yield (x, y)
+                if x == x2 and y == y2:
+                    break
+                err -= dx
+                if err < 0:
+                    x += sx
+                    err += dy
+                y += sy
+
+    def _p_to_bmp(self, xp: int, yp: int):
+        if xp % 2 == 0:
+            c = xp // 2
+            r = yp
+        else:
+            c = (xp - 1) // 2
+            r = yp - 1
+        if r < 0:
+            return (None, None)
+        return (c, r)
     
     def add_grid(self):
-        """Add a square grid pattern with specified square size and spacing"""
+        if self.iso_var.get():
+            self.add_grid_iso()
+        else:
+            self.add_grid_legacy()
+
+    # Legacy grid (kept for rollback)
+    def add_grid_legacy(self):
+        """Add a square grid pattern with specified square size and spacing (legacy mapping)"""
         try:
-            # Get grid parameters
-            start_x = int(self.grid_x_var.get())
+            start_x = int(np.sqrt(4)*int(self.grid_x_var.get()))
             start_y = int(self.grid_y_var.get())
             square_size = int(self.grid_size_var.get())
             spacing = int(self.grid_spacing_var.get())
-            
-            # Apply DLP 4500 diagonal grid scaling (same as rectangle/circle)
-            # X coordinates are scaled by sqrt(4) = 2
-            scaled_start_x = int(np.sqrt(4) * start_x)
-            
-            # Calculate grid parameters
             total_spacing = square_size + spacing
-            
-            # Calculate how many squares can fit in the pattern
-            max_squares_x = (self.width - scaled_start_x) // total_spacing
+            max_squares_x = (self.width - start_x) // total_spacing
             max_squares_y = (self.height - start_y) // total_spacing
-            
-            # Create the grid
             squares_added = 0
             for i in range(max_squares_x):
                 for j in range(max_squares_y):
-                    # Calculate square position
-                    square_x = scaled_start_x + i * total_spacing
+                    square_x = start_x + i * total_spacing
                     square_y = start_y + j * total_spacing
-                    
-                    # Ensure square fits within bounds
                     if (square_x + square_size <= self.width and 
                         square_y + square_size <= self.height):
-                        # Add the square
                         self.pattern[square_y:square_y + square_size, 
                                    square_x:square_x + square_size] = 1
                         squares_added += 1
-            
             self.update_preview()
-            self.status_var.set(f"Added grid: {squares_added} squares starting at ({start_x}, {start_y})")
-            
+            self.status_var.set(f"(Legacy) Added grid: {squares_added} squares starting at ({int(start_x/np.sqrt(4))}, {start_y})")
+        except ValueError:
+            messagebox.showerror("Error", "Please enter valid numbers for grid parameters")
+
+    # Isotropic grid on DMD lattice
+    def add_grid_iso(self):
+        try:
+            # Read parameters (BMP-space start; sizes in physical units)
+            start_x_b = int(self.grid_x_var.get())
+            start_y_b = int(self.grid_y_var.get())
+            square_size_p = int(self.grid_size_var.get())
+            spacing_p = int(self.grid_spacing_var.get())
+            total_p = square_size_p + spacing_p
+            # Physical start
+            start_x_p = 2 * start_x_b
+            start_y_p = start_y_b
+            phys_width = self.width * 2
+            phys_height = self.height + 1
+            # Precompute BMP index grids
+            rows = np.arange(self.height)[:, None]
+            cols = np.arange(self.width)[None, :]
+            # Accumulate mask
+            mask = np.zeros_like(self.pattern, dtype=bool)
+            squares_added = 0
+            i = 0
+            while True:
+                x0 = start_x_p + i * total_p
+                if x0 >= phys_width or x0 + square_size_p > phys_width:
+                    break
+                j = 0
+                row_added = False
+                while True:
+                    y0 = start_y_p + j * total_p
+                    if y0 >= phys_height or y0 + square_size_p > phys_height:
+                        break
+                    # Inside test for both physical mirrors mapped from each BMP pixel
+                    cond0 = (2 * cols >= x0) & (2 * cols < x0 + square_size_p) & (rows >= y0) & (rows < y0 + square_size_p)
+                    cond1 = (2 * cols + 1 >= x0) & (2 * cols + 1 < x0 + square_size_p) & (rows + 1 >= y0) & (rows + 1 < y0 + square_size_p)
+                    mask |= (cond0 | cond1)
+                    squares_added += 1
+                    row_added = True
+                    j += 1
+                if not row_added:
+                    break
+                i += 1
+            self.pattern[mask] = 1
+            self.update_preview()
+            self.status_var.set(f"(Iso) Added grid: {squares_added} squares starting at ({start_x_b}, {start_y_b})")
         except ValueError:
             messagebox.showerror("Error", "Please enter valid numbers for grid parameters")
     
     def add_text(self):
-        """Add text to the pattern with DLP 4500 diagonal grid compensation"""
+        if self.iso_var.get():
+            self.add_text_iso()
+        else:
+            self.add_text_legacy()
+
+    # Legacy text (kept for rollback)
+    def add_text_legacy(self):
+        """Add text to the pattern with DLP 4500 diagonal grid compensation (legacy mapping)"""
         try:
-            # Get text parameters
             text = self.text_var.get()
-            x = int(self.text_x_var.get())
+            x = int(np.sqrt(4)*int(self.text_x_var.get()))
             y = int(self.text_y_var.get())
             size = int(self.text_size_var.get())
-            
             if not text.strip():
                 messagebox.showerror("Error", "Please enter some text")
                 return
-            
-            # Apply DLP 4500 diagonal grid scaling (same as other tools)
-            # X coordinates are scaled by sqrt(4) = 2
-            scaled_x = int(np.sqrt(4) * x)
-            
-            # Create a temporary image to render the text
-            # Use a larger temporary image to ensure text fits
-            temp_width = len(text) * size * 2  # Estimate width needed
-            temp_height = size * 2  # Estimate height needed
-            
-            # Create temporary image with white background
+            temp_width = len(text) * size * 2
+            temp_height = size * 2
             temp_img = Image.new('L', (temp_width, temp_height), 255)
-            
-            # Create a drawing object
             from PIL import ImageDraw, ImageFont
-            
             draw = ImageDraw.Draw(temp_img)
-            
-            # Try to use a default font, fallback to basic if not available
             try:
-                # Try to use a system font
                 font = ImageFont.truetype("arial.ttf", size)
             except:
                 try:
-                    # Try alternative font names
                     font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", size)
                 except:
-                    # Fallback to default font
                     font = ImageFont.load_default()
-            
-            # Draw the text in black
             draw.text((0, 0), text, fill=0, font=font)
-            
-            # Convert to numpy array and threshold to binary
             text_array = np.array(temp_img)
             text_binary = (text_array < 128).astype(np.uint8)
-            
-            # Get the actual text bounds (crop to actual text content)
-            # Find the bounding box of the text
             rows = np.any(text_binary, axis=1)
             cols = np.any(text_binary, axis=0)
-            
             if np.any(rows) and np.any(cols):
                 rmin, rmax = np.where(rows)[0][[0, -1]]
                 cmin, cmax = np.where(cols)[0][[0, -1]]
-                
-                # Crop to actual text content
                 text_content = text_binary[rmin:rmax+1, cmin:cmax+1]
                 text_height, text_width = text_content.shape
-                
-                # Check if text fits within pattern bounds
-                if (scaled_x + text_width <= self.width and 
-                    y + text_height <= self.height and
-                    scaled_x >= 0 and y >= 0):
-                    
-                    # Add the text to the pattern
-                    self.pattern[y:y + text_height, scaled_x:scaled_x + text_width] = text_content
-                    
+                if (x + text_width <= self.width and y + text_height <= self.height and x >= 0 and y >= 0):
+                    self.pattern[y:y + text_height, x:x + text_width] = text_content
                     self.update_preview()
-                    self.status_var.set(f"Added text '{text}' at ({x}, {y}) with size {size}")
+                    self.status_var.set(f"(Legacy) Added text '{text}' at ({int(x/np.sqrt(4))}, {y}) with size {size}")
                 else:
                     messagebox.showerror("Error", "Text would extend beyond pattern boundaries")
             else:
                 messagebox.showerror("Error", "Could not render text")
-                
+        except ValueError:
+            messagebox.showerror("Error", "Please enter valid numbers for text parameters")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to add text: {str(e)}")
+
+    # Isotropic text on DMD lattice
+    def add_text_iso(self):
+        try:
+            text = self.text_var.get()
+            x_b = int(self.text_x_var.get())
+            y_b = int(self.text_y_var.get())
+            size = int(self.text_size_var.get())
+            if not text.strip():
+                messagebox.showerror("Error", "Please enter some text")
+                return
+            # Rasterize glyph to binary
+            temp_width = len(text) * size * 2
+            temp_height = size * 2
+            temp_img = Image.new('L', (temp_width, temp_height), 255)
+            from PIL import ImageDraw, ImageFont
+            draw = ImageDraw.Draw(temp_img)
+            try:
+                font = ImageFont.truetype("arial.ttf", size)
+            except:
+                try:
+                    font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", size)
+                except:
+                    font = ImageFont.load_default()
+            draw.text((0, 0), text, fill=0, font=font)
+            text_array = np.array(temp_img)
+            text_binary = (text_array < 128)
+            rows_any = np.any(text_binary, axis=1)
+            cols_any = np.any(text_binary, axis=0)
+            if not (np.any(rows_any) and np.any(cols_any)):
+                messagebox.showerror("Error", "Could not render text")
+                return
+            rmin, rmax = np.where(rows_any)[0][[0, -1]]
+            cmin, cmax = np.where(cols_any)[0][[0, -1]]
+            text_content = text_binary[rmin:rmax+1, cmin:cmax+1]
+            th, tw = text_content.shape
+            # Physical anchor
+            x_p = 2 * x_b
+            y_p = y_b
+            # Coordinates of on-pixels in glyph
+            gy, gx = np.where(text_content)
+            xp = x_p + gx
+            yp = y_p + gy
+            # Map to BMP pixels
+            is_even = (xp % 2 == 0)
+            c_even = xp[is_even] // 2
+            r_even = yp[is_even]
+            c_odd = (xp[~is_even] - 1) // 2
+            r_odd = yp[~is_even] - 1
+            # Concatenate
+            c_all = np.concatenate([c_even, c_odd])
+            r_all = np.concatenate([r_even, r_odd])
+            # Validate bounds
+            valid = (c_all >= 0) & (c_all < self.width) & (r_all >= 0) & (r_all < self.height)
+            self.pattern[r_all[valid], c_all[valid]] = 1
+            self.update_preview()
+            self.status_var.set(f"(Iso) Added text '{text}' at ({x_b}, {y_b}) size {size}")
         except ValueError:
             messagebox.showerror("Error", "Please enter valid numbers for text parameters")
         except Exception as e:
@@ -481,6 +703,18 @@ class DMDPatternGenerator:
         
         self.update_preview()
     
+    def flip_horizontal(self):
+        """Flip the pattern horizontally (about the Y-axis)"""
+        self.pattern = np.fliplr(self.pattern)
+        self.update_preview()
+        self.status_var.set("Pattern flipped horizontally")
+    
+    def flip_vertical(self):
+        """Flip the pattern vertically (about the X-axis)"""
+        self.pattern = np.flipud(self.pattern)
+        self.update_preview()
+        self.status_var.set("Pattern flipped vertically")
+    
     def on_preview_scale_change(self, value):
         """Callback for preview scale slider changes"""
         scale = float(value)
@@ -524,12 +758,16 @@ class DMDPatternGenerator:
         # Get the preview scale from slider (1.0 = pixel perfect, 0.1 = 10% scale, 5.0 = 5x zoom)
         preview_scale = self.preview_scale_var.get()
         
+        # Map BMP (912x1140) to physical DMD (approx 1824 x 1141) using (2c, r) and (2c+1, r+1)
+        physical_map = self._bmp_to_dmd_physical()
+        phys_height, phys_width = physical_map.shape
+        
         # Calculate preview dimensions based on scale
-        preview_width = int(np.sqrt(4)*int(self.width * preview_scale))
-        preview_height = int(self.height * preview_scale)
+        preview_width = int(phys_width * preview_scale)
+        preview_height = int(phys_height * preview_scale)
         
         # Convert numpy array to PIL Image
-        img = Image.fromarray(self.pattern * 255, mode='L')
+        img = Image.fromarray(physical_map * 255, mode='L')
         img = img.resize((preview_width, preview_height), Image.NEAREST)
         
         # Convert to PhotoImage for tkinter
@@ -543,6 +781,35 @@ class DMDPatternGenerator:
         
         # Create image at origin (0,0) instead of center
         self.preview_canvas.create_image(0, 0, image=self.preview_photo, anchor=tk.NW)
+
+    # --- Legacy preview retained for easy rollback ---
+    def update_preview_legacy(self):
+        preview_scale = self.preview_scale_var.get()
+        preview_width = int(np.sqrt(4)*int(self.width * preview_scale))
+        preview_height = int(self.height * preview_scale)
+        img = Image.fromarray(self.pattern * 255, mode='L')
+        img = img.resize((preview_width, preview_height), Image.NEAREST)
+        self.preview_photo = ImageTk.PhotoImage(img)
+        self.preview_canvas.delete("all")
+        self.preview_canvas.configure(scrollregion=(0, 0, preview_width, preview_height))
+        self.preview_canvas.create_image(0, 0, image=self.preview_photo, anchor=tk.NW)
+
+    # --- Helper: map BMP grid to physical DMD mirror occupancy ---
+    def _bmp_to_dmd_physical(self) -> np.ndarray:
+        """Create a physical mirror occupancy map from the 912x1140 BMP grid.
+        For each BMP pixel (c, r) == 1, light DMD mirrors at (2c, r) and (2c+1, r+1).
+        Returns an array of shape ((height+1), (2*width)) of dtype uint8.
+        """
+        phys_height = self.height + 1
+        phys_width = self.width * 2
+        physical = np.zeros((phys_height, phys_width), dtype=np.uint8)
+        ones_y, ones_x = np.where(self.pattern == 1)
+        # (2c, r)
+        physical[ones_y, 2 * ones_x] = 1
+        # (2c+1, r+1) with clipping at bottom row
+        valid = ones_y + 1 < phys_height
+        physical[ones_y[valid] + 1, 2 * ones_x[valid] + 1] = 1
+        return physical
         
     def create_princeton_shield(self):
         """Create a Princeton University shield pattern from BMP file"""
